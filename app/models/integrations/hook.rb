@@ -14,6 +14,10 @@
 #  inbox_id     :integer
 #  reference_id :string
 #
+# Indexes
+#
+#  index_integrations_hooks_on_enabled_translation_provider  (account_id) UNIQUE WHERE (((app_id)::text = 'translation'::text) AND (status = 1))
+#
 class Integrations::Hook < ApplicationRecord
   include Reauthorizable
 

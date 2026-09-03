@@ -57,16 +57,8 @@ database_exists="$({
     psql "host=${RDS_ENDPOINT} port=${RDS_PORT} dbname=postgres user=${master_username} sslmode=require" \
     -tAc "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DATABASE}'"
 } | tr -d '[:space:]')"
-
-if [[ "${database_exists}" == "1" ]]; then
-  backup_key="backups/postgres/chatwoot-$(date -u +%Y%m%dT%H%M%SZ).dump"
-  echo "Creating a pre-migration database backup at s3://${S3_BUCKET_NAME}/${backup_key}"
-  docker run --rm \
-    -e PGPASSWORD="${postgres_password}" \
-    postgres:18-alpine \
-    pg_dump "host=${RDS_ENDPOINT} port=${RDS_PORT} dbname=${POSTGRES_DATABASE} user=${POSTGRES_USERNAME} sslmode=require" \
-    --format=custom --no-owner --no-acl | aws s3 cp - "s3://${S3_BUCKET_NAME}/${backup_key}" --sse AES256
-fi
+database_existed=false
+[[ "${database_exists}" == "1" ]] && database_existed=true
 
 docker run --rm --interactive \
   -e PGPASSWORD="${master_password}" \
@@ -141,13 +133,38 @@ registry="${IMAGE_URI%%/*}"
 aws ecr get-login-password | docker login --username AWS --password-stdin "${registry}" >/dev/null
 docker pull "${IMAGE_URI}"
 
-echo 'Running database preparation and migrations.'
-docker run --rm \
+migration_required=true
+if [[ "${database_existed}" == true ]] && docker run --rm \
   --network chatwoot \
   --env-file /opt/chatwoot/.env \
-  --entrypoint docker/entrypoints/rails.sh \
   "${IMAGE_URI}" \
-  bundle exec rails db:chatwoot_prepare
+  bundle exec rails db:abort_if_pending_migrations \
+  >/dev/null 2>&1; then
+  migration_required=false
+fi
+
+if [[ "${migration_required}" == true ]]; then
+  if [[ "${database_existed}" == true ]]; then
+    backup_key="backups/postgres/chatwoot-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    echo "Pending migrations detected. Creating a database backup at s3://${S3_BUCKET_NAME}/${backup_key}"
+    docker run --rm \
+      -e PGPASSWORD="${postgres_password}" \
+      postgres:18-alpine \
+      pg_dump "host=${RDS_ENDPOINT} port=${RDS_PORT} dbname=${POSTGRES_DATABASE} user=${POSTGRES_USERNAME} sslmode=require" \
+      --format=custom --no-owner --no-acl | aws s3 cp - "s3://${S3_BUCKET_NAME}/${backup_key}" --sse AES256
+  else
+    echo 'Preparing the new Chatwoot database.'
+  fi
+
+  docker run --rm \
+    --network chatwoot \
+    --env-file /opt/chatwoot/.env \
+    --entrypoint docker/entrypoints/rails.sh \
+    "${IMAGE_URI}" \
+    bundle exec rails db:chatwoot_prepare
+else
+  echo 'No pending database migrations. Skipping database backup and migration.'
+fi
 
 if [[ -n "${BOOTSTRAP_SECRET_ID:-}" ]]; then
   bootstrap_json="$(aws secretsmanager get-secret-value --secret-id "${BOOTSTRAP_SECRET_ID}" --query SecretString --output text)"

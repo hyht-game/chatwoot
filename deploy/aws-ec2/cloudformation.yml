@@ -159,13 +159,105 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub ${ApplicationLogGroup.Arn}:*
+                Resource: !GetAtt ApplicationLogGroup.Arn
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
         - !Ref InstanceRole
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: BuildChatwootImage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !GetAtt ContainerRepository.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub ${UploadsBucket.Arn}/deploy/source.zip
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ApplicationLogGroup.Arn
+
+  ImageBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Build the customized Chatwoot production image
+      ServiceRole: !GetAtt BuildRole.Arn
+      TimeoutInMinutes: 60
+      Source:
+        Type: S3
+        Location: !Sub ${UploadsBucket}/deploy/source.zip
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - REGISTRY="${REPOSITORY_URI%%/*}"
+                - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+            build:
+              commands:
+                - docker build --build-arg GIT_SHA="$IMAGE_TAG" --file docker/Dockerfile --tag "$REPOSITORY_URI:$IMAGE_TAG" --tag "$REPOSITORY_URI:latest" .
+            post_build:
+              commands:
+                - docker push "$REPOSITORY_URI:$IMAGE_TAG"
+                - docker push "$REPOSITORY_URI:latest"
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_DOCKER_LAYER_CACHE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: REPOSITORY_URI
+            Type: PLAINTEXT
+            Value: !GetAtt ContainerRepository.RepositoryUri
+          - Name: IMAGE_TAG
+            Type: PLAINTEXT
+            Value: latest
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref ApplicationLogGroup
+          StreamName: codebuild
+      Tags:
+        - Key: Name
+          Value: !Sub chatwoot-${Environment}-image-build
 
   ApplicationSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -269,6 +361,8 @@ Outputs:
     Value: !Ref ApplicationInstance
   EcrRepositoryUri:
     Value: !GetAtt ContainerRepository.RepositoryUri
+  CodeBuildProjectName:
+    Value: !Ref ImageBuildProject
   UploadsBucketName:
     Value: !Ref UploadsBucket
   LogGroupName:

@@ -8,6 +8,7 @@ STACK_NAME="${CHATWOOT_STACK_NAME:-chatwoot-prod}"
 SOURCE_PREFIX_DEFAULT="${CHATWOOT_SOURCE_PREFIX:-game-server-prod}"
 RUNTIME_SECRET_NAME=""
 BOOTSTRAP_SECRET_NAME=""
+SOURCE_ARCHIVE=""
 
 usage() {
   cat <<'USAGE'
@@ -34,21 +35,12 @@ if [[ $# -gt 0 ]]; then
   exit 1
 fi
 
-for command_name in aws docker git jq curl openssl; do
+for command_name in aws git jq curl openssl; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "错误：未找到 ${command_name}。" >&2
     exit 1
   fi
 done
-
-if ! docker buildx version >/dev/null 2>&1; then
-  echo '错误：Docker buildx 不可用，请先启动或更新 Docker Desktop。' >&2
-  exit 1
-fi
-if ! docker info >/dev/null 2>&1; then
-  echo '错误：Docker 服务未运行，请先启动 Docker Desktop。' >&2
-  exit 1
-fi
 
 cd "${PROJECT_ROOT}"
 
@@ -260,6 +252,9 @@ cleanup_bootstrap_secret() {
   if [[ -n "${BOOTSTRAP_SECRET_NAME}" ]]; then
     aws secretsmanager delete-secret --secret-id "${BOOTSTRAP_SECRET_NAME}" --force-delete-without-recovery >/dev/null 2>&1 || true
   fi
+  if [[ -n "${SOURCE_ARCHIVE}" && -f "${SOURCE_ARCHIVE}" ]]; then
+    rm -f -- "${SOURCE_ARCHIVE}"
+  fi
 }
 trap cleanup_bootstrap_secret EXIT
 
@@ -358,21 +353,47 @@ stack_output() {
 
 instance_id="$(stack_output InstanceId)"
 ecr_repository_uri="$(stack_output EcrRepositoryUri)"
+codebuild_project_name="$(stack_output CodeBuildProjectName)"
 uploads_bucket="$(stack_output UploadsBucketName)"
 log_group_name="$(stack_output LogGroupName)"
 image_tag="$(git rev-parse --short=12 HEAD)"
 image_uri="${ecr_repository_uri}:${image_tag}"
-registry="${ecr_repository_uri%%/*}"
 
-echo "正在构建并推送镜像 ${image_uri}..."
-aws ecr get-login-password | docker login --username AWS --password-stdin "${registry}" >/dev/null
-docker buildx build \
-  --platform linux/amd64 \
-  --file docker/Dockerfile \
-  --tag "${image_uri}" \
-  --tag "${ecr_repository_uri}:latest" \
-  --push \
-  .
+SOURCE_ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/chatwoot-source.XXXXXX")"
+git archive --format=zip --output="${SOURCE_ARCHIVE}" HEAD
+aws s3 cp "${SOURCE_ARCHIVE}" "s3://${uploads_bucket}/deploy/source.zip" --sse AES256 >/dev/null
+rm -f -- "${SOURCE_ARCHIVE}"
+SOURCE_ARCHIVE=''
+
+echo "正在通过 AWS CodeBuild 构建并推送镜像 ${image_uri}..."
+build_id="$(aws codebuild start-build \
+  --project-name "${codebuild_project_name}" \
+  --environment-variables-override "name=IMAGE_TAG,value=${image_tag},type=PLAINTEXT" \
+  --query 'build.id' \
+  --output text)"
+
+for attempt in {1..180}; do
+  build_status="$(aws codebuild batch-get-builds \
+    --ids "${build_id}" \
+    --query 'builds[0].buildStatus' \
+    --output text)"
+  case "${build_status}" in
+    SUCCEEDED)
+      break
+      ;;
+    FAILED|FAULT|STOPPED|TIMED_OUT)
+      aws codebuild batch-get-builds \
+        --ids "${build_id}" \
+        --query 'builds[0].{Status:buildStatus,CurrentPhase:currentPhase,Phases:phases[*].{Phase:phaseType,Status:phaseStatus,Message:contexts[0].message},Logs:logs.deepLink}'
+      exit 1
+      ;;
+  esac
+  sleep 10
+done
+if [[ "${build_status:-}" != 'SUCCEEDED' ]]; then
+  echo '错误：CodeBuild 镜像构建在 30 分钟内没有完成。' >&2
+  exit 1
+fi
 
 echo '正在等待 EC2 进入 SSM 在线状态...'
 for attempt in {1..60}; do
@@ -397,7 +418,7 @@ shell_quote() {
 
 remote_command="aws s3 cp $(shell_quote "s3://${uploads_bucket}/${remote_script_key}") /tmp/chatwoot-remote-deploy.sh >/dev/null && chmod 700 /tmp/chatwoot-remote-deploy.sh && AWS_REGION=$(shell_quote "${region}") IMAGE_URI=$(shell_quote "${image_uri}") RUNTIME_SECRET_ID=$(shell_quote "${RUNTIME_SECRET_NAME}") RDS_MASTER_SECRET_ID=$(shell_quote "${rds_master_secret_name}") RDS_ENDPOINT=$(shell_quote "${rds_endpoint}") RDS_PORT=$(shell_quote "${rds_port}") POSTGRES_DATABASE=$(shell_quote "${postgres_database}") POSTGRES_USERNAME=$(shell_quote "${postgres_username}") S3_BUCKET_NAME=$(shell_quote "${uploads_bucket}") CHATWOOT_DOMAIN=$(shell_quote "${domain_name}") LOG_GROUP_NAME=$(shell_quote "${log_group_name}") BOOTSTRAP_SECRET_ID=$(shell_quote "${BOOTSTRAP_SECRET_NAME}") /tmp/chatwoot-remote-deploy.sh"
 
-echo '正在远程执行数据库迁移并更新 Rails、Sidekiq 和 Redis...'
+echo '正在远程检查数据库并更新 Rails、Sidekiq 和 Redis...'
 command_id="$(aws ssm send-command \
   --instance-ids "${instance_id}" \
   --document-name AWS-RunShellScript \

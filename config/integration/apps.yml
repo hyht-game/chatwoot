@@ -57,6 +57,32 @@ openai:
       },
     ]
   visible_properties: ['label_suggestion']
+translation:
+  id: translation
+  logo: google_translate.png
+  i18n_key: translation
+  action: /translation
+  hook_type: account
+  allow_multiple_hooks: true
+  settings_json_schema:
+    {
+      'type': 'object',
+      'properties':
+        {
+          'name': { 'type': 'string', 'minLength': 1 },
+          'provider':
+            {
+              'type': 'string',
+              'enum': ['openai_compatible', 'deepseek'],
+            },
+          'api_base': { 'type': 'string', 'minLength': 1 },
+          'model': { 'type': 'string', 'minLength': 1 },
+          'agent_language': { 'type': 'string', 'minLength': 2 },
+        },
+      'required': ['name', 'provider', 'api_base', 'model', 'agent_language'],
+      'additionalProperties': false,
+    }
+  visible_properties: ['name', 'provider', 'api_base', 'model']
 linear:
   id: linear
   logo: linear.png

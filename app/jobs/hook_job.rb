@@ -7,6 +7,7 @@ class HookJob < MutexApplicationJob
     'slack' => :process_slack_integration,
     'dialogflow' => :process_dialogflow_integration,
     'google_translate' => :google_translate_integration,
+    'translation' => :translation_integration,
     'leadsquared' => :process_leadsquared_integration_with_lock,
     'linear' => :process_linear_integration
   }.freeze
@@ -55,6 +56,12 @@ class HookJob < MutexApplicationJob
 
     message = event_data[:message]
     Integrations::GoogleTranslate::DetectLanguageService.new(hook: hook, message: message).perform
+  end
+
+  def translation_integration(hook, event_name, event_data)
+    return unless event_name == 'message.created'
+
+    Integrations::Translation::IncomingMessageService.new(hook: hook, message: event_data[:message]).perform
   end
 
   def process_linear_integration(hook, event_name, event_data)

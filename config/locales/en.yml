@@ -172,6 +172,16 @@ en:
         permission_request_failed: 'Failed to send call permission request'
     openai:
       invalid_api_key: 'OpenAI API key is invalid or revoked. Please check your key in your OpenAI dashboard.'
+    translation:
+      api_error: 'The translation provider returned HTTP %{status}.'
+      api_key_required: 'An API key is required.'
+      empty_response: 'The translation provider returned an empty response.'
+      invalid_response: 'The translation provider returned an invalid response.'
+      language_detection_failed: 'The customer language could not be detected.'
+      target_language_invalid: 'The customer language is invalid.'
+      target_language_missing: 'The customer language is not available yet.'
+      unavailable: 'The translation provider is unavailable. Please try again.'
+      unsupported_provider: 'This translation provider is not supported.'
     inboxes:
       imap:
         socket_error: Please check the network connection, IMAP address and try again.
@@ -417,6 +427,10 @@ en:
       name: 'OpenAI'
       short_description: 'AI-powered reply suggestions, summarization, and message enhancement.'
       description: 'Leverage the power of large language models from OpenAI with the features such as reply suggestions, summarization, message rephrasing, spell-checking, and label classification.'
+    translation:
+      name: 'Translation Providers'
+      short_description: 'Automatically translate messages with a configured language model.'
+      description: 'Configure OpenAI-compatible translation providers for incoming customer messages and outgoing agent replies.'
     linear:
       name: 'Linear'
       short_description: 'Create and link Linear issues directly from conversations.'

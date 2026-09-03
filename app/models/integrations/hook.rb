@@ -17,6 +17,8 @@
 class Integrations::Hook < ApplicationRecord
   include Reauthorizable
 
+  TRANSLATION_LANGUAGE_CODE_PATTERN = /\A[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*\z/i
+
   attr_readonly :app_id, :account_id, :inbox_id, :hook_type
   before_validation :ensure_hook_type, on: :create
   after_create :trigger_setup_if_crm
@@ -28,6 +30,7 @@ class Integrations::Hook < ApplicationRecord
   validates :app_id, presence: true
   validates :inbox_id, presence: true, if: -> { hook_type == 'inbox' }
   validate :validate_settings_json_schema
+  validate :validate_translation_settings, if: :translation?
   validate :ensure_feature_enabled
   validate :validate_openai_api_key, if: :validate_openai_api_key?
   validate :validate_cloudflare_realtimekit_credentials, if: :validate_cloudflare_realtimekit_credentials?
@@ -60,6 +63,10 @@ class Integrations::Hook < ApplicationRecord
 
   def openai?
     app_id == 'openai'
+  end
+
+  def translation?
+    app_id == 'translation'
   end
 
   def dyte?
@@ -142,6 +149,18 @@ class Integrations::Hook < ApplicationRecord
     return if Integrations::Openai::KeyValidator.valid?(settings_api_key(settings))
 
     errors.add(:base, I18n.t('errors.openai.invalid_api_key'))
+  end
+
+  def validate_translation_settings
+    begin
+      uri = URI.parse(settings_value(settings, 'api_base').to_s)
+      errors.add(:settings, ': API URL must be a valid HTTP or HTTPS URL') unless uri.is_a?(URI::HTTP) && uri.host.present?
+    rescue URI::InvalidURIError
+      errors.add(:settings, ': API URL must be a valid HTTP or HTTPS URL')
+    end
+
+    agent_language = settings_value(settings, 'agent_language').to_s
+    errors.add(:settings, ': Agent language must be a valid BCP 47 code') unless agent_language.match?(TRANSLATION_LANGUAGE_CODE_PATTERN)
   end
 
   def validate_cloudflare_realtimekit_credentials

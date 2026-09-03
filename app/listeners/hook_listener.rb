@@ -62,6 +62,7 @@ class HookListener < BaseListener
       'slack' => ['message.created', 'message.updated'],
       'dialogflow' => ['message.created', 'message.updated'],
       'google_translate' => ['message.created'],
+      'translation' => ['message.created'],
       'leadsquared' => ['contact.updated', 'conversation.created', 'conversation.resolved'],
       'linear' => ['message.created']
     }

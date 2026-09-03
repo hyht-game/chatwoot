@@ -7,7 +7,8 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def create
     user = Current.user || @resource
-    mb = Messages::MessageBuilder.new(user, @conversation, params)
+    message_params = Messages::OutgoingTranslationService.new(conversation: @conversation, user: user, params: params).perform
+    mb = Messages::MessageBuilder.new(user, @conversation, message_params)
     @message = mb.perform
   rescue StandardError => e
     render_could_not_create_error(e.message)

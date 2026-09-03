@@ -8,6 +8,7 @@ Rails.application.config.filter_parameters += [
 
 # Regex to filter all occurrences of 'token' in keys except for 'website_token'
 filter_regex = /\A(?!.*\bwebsite_token\b).*token/i
+message_content_filter = /(?:\A|\.)content\z/
 
 # Apply the regex for filtering
-Rails.application.config.filter_parameters += [filter_regex]
+Rails.application.config.filter_parameters += [filter_regex, message_content_filter]

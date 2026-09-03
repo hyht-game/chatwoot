@@ -63,5 +63,61 @@
     "SIDEBAR_DESCRIPTION": {
       "DIALOGFLOW": "Dialogflow is a natural language processing platform for building conversational interfaces. Integrating it with {installationName} lets bots handle queries first and transfer them to agents when needed. It helps qualify leads and reduce agent workload by answering FAQs. To add Dialogflow, create a Service Account in Google Console and share the credentials. Refer to the docs for details"
     }
+  },
+  "TRANSLATION_PROVIDERS": {
+    "TITLE": "Translation providers",
+    "DESCRIPTION": "Configure the language model used to translate incoming customer messages and outgoing agent replies. Only one provider can be enabled at a time.",
+    "LOADING": "Loading translation providers",
+    "ADD": "Add provider",
+    "TEST": "Test connection",
+    "EMPTY": "No translation providers configured.",
+    "PROVIDERS": {
+      "OPENAI_COMPATIBLE": "OpenAI compatible",
+      "DEEPSEEK": "DeepSeek"
+    },
+    "TABLE": {
+      "NAME": "Name",
+      "PROVIDER": "Provider",
+      "API_BASE": "API URL",
+      "MODEL": "Model",
+      "STATUS": "Status",
+      "ACTIONS": "Actions"
+    },
+    "FORM": {
+      "ADD_TITLE": "Add translation provider",
+      "EDIT_TITLE": "Edit translation provider",
+      "DESCRIPTION": "The API URL may be a base URL ending in /v1 or a complete /chat/completions URL.",
+      "NAME": "Configuration name",
+      "PROVIDER": "Provider type",
+      "API_BASE": "API URL",
+      "API_BASE_PLACEHOLDER": "https://example.com/v1",
+      "API_KEY": "API key",
+      "API_KEY_EDIT_HELP": "Leave blank to keep the current API key.",
+      "MODEL": "Model",
+      "AGENT_LANGUAGE": "Agent language",
+      "AGENT_LANGUAGE_HELP": "Use a BCP 47 language code, for example zh-CN.",
+      "ENABLED": "Enable translation",
+      "ENABLED_HELP": "Enabling this provider disables the currently active provider.",
+      "CANCEL": "Cancel",
+      "SAVE": "Save"
+    },
+    "SUCCESS": {
+      "SAVED": "Translation provider saved.",
+      "ENABLED": "Translation provider enabled.",
+      "DISABLED": "Translation provider disabled.",
+      "TESTED": "Connection test succeeded.",
+      "DELETED": "Translation provider deleted."
+    },
+    "ERROR": {
+      "LOAD": "Could not load translation providers.",
+      "SAVE": "Could not save the translation provider.",
+      "TEST": "Connection test failed.",
+      "DELETE": "Could not delete the translation provider."
+    },
+    "DELETE": {
+      "TITLE": "Delete translation provider",
+      "MESSAGE": "Are you sure you want to delete this translation provider?",
+      "CONFIRM": "Delete"
+    }
   }
 }

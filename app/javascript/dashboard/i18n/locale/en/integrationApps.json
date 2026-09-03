@@ -66,7 +66,7 @@
   },
   "TRANSLATION_PROVIDERS": {
     "TITLE": "Translation providers",
-    "DESCRIPTION": "Configure the language model used to translate incoming customer messages and outgoing agent replies. Only one provider can be enabled at a time.",
+    "DESCRIPTION": "Let agents work in one language while customer messages and agent replies are translated automatically. Only one provider can be enabled at a time.",
     "LOADING": "Loading translation providers",
     "ADD": "Add provider",
     "TEST": "Test connection",

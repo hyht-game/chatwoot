@@ -118,6 +118,16 @@ zh_CN:
     messages:
       search:
         time_range_limit_exceeded: 'Search is limited to the last %{days} days'
+    translation:
+      api_error: '翻译服务返回 HTTP %{status}。'
+      api_key_required: '必须填写 API 密钥。'
+      empty_response: '翻译服务返回了空内容。'
+      invalid_response: '翻译服务返回了无效响应。'
+      language_detection_failed: '无法识别客户使用的语言。'
+      target_language_invalid: '客户语言代码无效。'
+      target_language_missing: '尚未获取客户使用的语言，请先让客户发送一条消息。'
+      unavailable: '翻译服务暂时不可用，请稍后重试。'
+      unsupported_provider: '不支持此翻译服务类型。'
     categories:
       locale:
         unique: 在类别和门户中应该是唯一的
@@ -399,6 +409,10 @@ zh_CN:
       name: 'OpenAI'
       short_description: 'AI 驱动的答复建议、摘要和消息增强。'
       description: '利用 OpenAI 的大型语言模型功能，例如回复建议、摘要、消息改写、拼写检查和标签分类。'
+    translation:
+      name: 'AI 双向翻译'
+      short_description: '自动翻译客户消息和客服回复。'
+      description: '让客服始终使用中文：客户消息自动译成中文，客服回复在发送前自动译成客户语言。支持 Sub2API、OpenAI、DeepSeek 等兼容接口；客户只收到译文，中文原文不写入消息。'
     linear:
       name: 'Linear'
       short_description: '直接在会话中创建并关联 Linear 问题。'

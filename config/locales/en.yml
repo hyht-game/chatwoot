@@ -428,9 +428,9 @@ en:
       short_description: 'AI-powered reply suggestions, summarization, and message enhancement.'
       description: 'Leverage the power of large language models from OpenAI with the features such as reply suggestions, summarization, message rephrasing, spell-checking, and label classification.'
     translation:
-      name: 'Translation Providers'
-      short_description: 'Automatically translate messages with a configured language model.'
-      description: 'Configure OpenAI-compatible translation providers for incoming customer messages and outgoing agent replies.'
+      name: 'AI Message Translation'
+      short_description: 'Translate customer messages and agent replies automatically.'
+      description: 'Let agents work in one language while customer messages are translated for them and agent replies are translated before sending. Supports OpenAI-compatible services such as Sub2API, OpenAI, and DeepSeek; customers receive only the translated reply.'
     linear:
       name: 'Linear'
       short_description: 'Create and link Linear issues directly from conversations.'

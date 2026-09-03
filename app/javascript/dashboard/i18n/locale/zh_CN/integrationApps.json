@@ -63,5 +63,61 @@
     "SIDEBAR_DESCRIPTION": {
       "DIALOGFLOW": "Dialogflow 是一个用于构建对话界面的自然语言处理平台。将其与 {installationName} 集成可以让机器人优先处理查询，并在需要时转接给客服代理。它通过回答常见问题来帮助筛选潜在客户并减少客服代理工作量。要添加 Dialogflow，请在 Google 控制台中创建服务帐户并共享凭据。详情请参阅文档"
     }
+  },
+  "TRANSLATION_PROVIDERS": {
+    "TITLE": "AI 翻译配置",
+    "DESCRIPTION": "让客服使用中文处理多语言会话。客户消息和客服回复会自动翻译，同一时间只能启用一个翻译服务。",
+    "LOADING": "正在加载翻译服务",
+    "ADD": "添加翻译服务",
+    "TEST": "测试连接",
+    "EMPTY": "尚未配置翻译服务。",
+    "PROVIDERS": {
+      "OPENAI_COMPATIBLE": "OpenAI 兼容",
+      "DEEPSEEK": "DeepSeek"
+    },
+    "TABLE": {
+      "NAME": "名称",
+      "PROVIDER": "服务类型",
+      "API_BASE": "API 地址",
+      "MODEL": "模型",
+      "STATUS": "状态",
+      "ACTIONS": "操作"
+    },
+    "FORM": {
+      "ADD_TITLE": "添加翻译服务",
+      "EDIT_TITLE": "编辑翻译服务",
+      "DESCRIPTION": "API 地址可以填写以 /v1 结尾的基础地址，也可以填写完整的 /chat/completions 地址。",
+      "NAME": "配置名称",
+      "PROVIDER": "服务类型",
+      "API_BASE": "API 地址",
+      "API_BASE_PLACEHOLDER": "https://example.com/v1",
+      "API_KEY": "API 密钥",
+      "API_KEY_EDIT_HELP": "留空则保留当前 API 密钥。",
+      "MODEL": "模型",
+      "AGENT_LANGUAGE": "客服语言",
+      "AGENT_LANGUAGE_HELP": "请填写 BCP 47 语言代码，例如 zh-CN。",
+      "ENABLED": "启用自动翻译",
+      "ENABLED_HELP": "启用此服务后，当前启用的其他翻译服务会自动关闭。",
+      "CANCEL": "取消",
+      "SAVE": "保存"
+    },
+    "SUCCESS": {
+      "SAVED": "翻译服务已保存。",
+      "ENABLED": "翻译服务已启用。",
+      "DISABLED": "翻译服务已停用。",
+      "TESTED": "连接测试成功。",
+      "DELETED": "翻译服务已删除。"
+    },
+    "ERROR": {
+      "LOAD": "无法加载翻译服务。",
+      "SAVE": "无法保存翻译服务。",
+      "TEST": "连接测试失败。",
+      "DELETE": "无法删除翻译服务。"
+    },
+    "DELETE": {
+      "TITLE": "删除翻译服务",
+      "MESSAGE": "确定要删除这个翻译服务吗？",
+      "CONFIRM": "删除"
+    }
   }
 }

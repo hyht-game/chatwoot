@@ -1,4 +1,8 @@
 class HookPolicy < ApplicationPolicy
+  def index?
+    @account_user.administrator?
+  end
+
   def create?
     @account_user.administrator?
   end
@@ -9,6 +13,10 @@ class HookPolicy < ApplicationPolicy
 
   def process_event?
     true
+  end
+
+  def test?
+    @account_user.administrator?
   end
 
   def destroy?

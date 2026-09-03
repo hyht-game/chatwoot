@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE_DIR="${PROJECT_ROOT}/tmp/chatwoot-services"
+LOG_DIR="${PROJECT_ROOT}/log"
+PROJECT_NAME="$(basename "${PROJECT_ROOT}" | tr -cd '[:alnum:]_-')"
+PROJECT_HASH="$(printf '%s' "${PROJECT_ROOT}" | cksum | awk '{print $1}')"
+SESSION_PREFIX="cw-${PROJECT_NAME}-${PROJECT_HASH}"
+
+mkdir -p "${STATE_DIR}" "${LOG_DIR}"
+cd "${PROJECT_ROOT}"
+
+if ! command -v rbenv >/dev/null 2>&1; then
+  echo "错误：未找到 rbenv，请先安装并配置 Ruby。"
+  exit 1
+fi
+
+eval "$(rbenv init - bash)"
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "错误：未找到 pnpm，请先安装前端依赖工具。"
+  exit 1
+fi
+
+if ! command -v screen >/dev/null 2>&1; then
+  echo "错误：未找到 screen，无法在后台托管 Chatwoot 服务。"
+  exit 1
+fi
+
+if [[ "${1:-}" == "--run-service" ]]; then
+  service_name="$2"
+  shift 2
+  echo "$$" >"${STATE_DIR}/${service_name}.pid"
+  exec "$@" >>"${LOG_DIR}/${service_name}.log" 2>&1
+fi
+
+pid_is_running() {
+  local pid_file="$1"
+  local pid
+
+  [[ -f "${pid_file}" ]] || return 1
+  pid="$(cat "${pid_file}")"
+  [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null
+}
+
+port_is_busy() {
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+if ! pid_is_running "${STATE_DIR}/rails.pid" && port_is_busy 3100; then
+  echo "错误：端口 3100 已被其他进程占用。请先停止现有 Rails 服务。"
+  exit 1
+fi
+
+if ! pid_is_running "${STATE_DIR}/vite.pid" && port_is_busy 3036; then
+  echo "错误：端口 3036 已被其他进程占用。请先停止现有 Vite 服务。"
+  exit 1
+fi
+
+start_service() {
+  local name="$1"
+  local pid_file="${STATE_DIR}/${name}.pid"
+  local log_file="${LOG_DIR}/${name}.log"
+  local session_name="${SESSION_PREFIX}-${name}"
+  shift
+
+  if pid_is_running "${pid_file}"; then
+    echo "${name} 已在运行，PID $(cat "${pid_file}")"
+    return
+  fi
+
+  rm -f "${pid_file}"
+  screen -dmS "${session_name}" "${PROJECT_ROOT}/bin/chatwoot-start" --run-service "${name}" "$@"
+
+  local attempt
+  local pid=""
+  for attempt in {1..40}; do
+    if [[ -f "${pid_file}" ]]; then
+      pid="$(cat "${pid_file}")"
+      kill -0 "${pid}" 2>/dev/null && break
+    fi
+    sleep 0.25
+  done
+
+  if [[ -z "${pid}" ]] || ! kill -0 "${pid}" 2>/dev/null; then
+    rm -f "${pid_file}"
+    echo "错误：${name} 启动失败，最近日志："
+    tail -n 20 "${log_file}"
+    exit 1
+  fi
+
+  echo "${name} 已启动，PID ${pid}，日志 ${log_file}"
+}
+
+start_service rails bundle exec rails server -b 0.0.0.0 -p 3100
+start_service sidekiq bundle exec sidekiq -C config/sidekiq.yml
+start_service vite bin/vite dev
+
+echo
+echo "Chatwoot 已启动："
+echo "  客服后台：http://localhost:3100"
+echo "  Vite：http://localhost:3036"
+echo "关闭服务：bin/chatwoot-stop"

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATE_DIR="${PROJECT_ROOT}/tmp/chatwoot-services"
+PROJECT_NAME="$(basename "${PROJECT_ROOT}" | tr -cd '[:alnum:]_-')"
+PROJECT_HASH="$(printf '%s' "${PROJECT_ROOT}" | cksum | awk '{print $1}')"
+SESSION_PREFIX="cw-${PROJECT_NAME}-${PROJECT_HASH}"
+
+stop_process_tree() {
+  local pid="$1"
+  local child
+
+  for child in $(pgrep -P "${pid}" 2>/dev/null || true); do
+    stop_process_tree "${child}"
+  done
+
+  kill -TERM "${pid}" 2>/dev/null || true
+}
+
+stop_service() {
+  local name="$1"
+  local pid_file="${STATE_DIR}/${name}.pid"
+  local session_name="${SESSION_PREFIX}-${name}"
+  local pid
+  local attempt
+
+  if [[ ! -f "${pid_file}" ]]; then
+    screen -S "${session_name}" -X quit >/dev/null 2>&1 || true
+    echo "${name} 未由一键脚本启动"
+    return
+  fi
+
+  pid="$(cat "${pid_file}")"
+  if [[ ! "${pid}" =~ ^[0-9]+$ ]] || ! kill -0 "${pid}" 2>/dev/null; then
+    rm -f "${pid_file}"
+    echo "${name} 已停止"
+    return
+  fi
+
+  stop_process_tree "${pid}"
+
+  for attempt in {1..120}; do
+    kill -0 "${pid}" 2>/dev/null || break
+    sleep 0.25
+  done
+
+  if kill -0 "${pid}" 2>/dev/null; then
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
+
+  screen -S "${session_name}" -X quit >/dev/null 2>&1 || true
+  rm -f "${pid_file}"
+  echo "${name} 已停止"
+}
+
+stop_service vite
+stop_service sidekiq
+stop_service rails
+
+echo "Chatwoot 服务已全部停止。"

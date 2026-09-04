@@ -45,8 +45,21 @@ active_record_deterministic_key="$(jq -er '.ACTIVE_RECORD_ENCRYPTION_DETERMINIST
 active_record_salt="$(jq -er '.ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT' <<<"${runtime_json}")"
 postgres_password="$(jq -er '.POSTGRES_PASSWORD' <<<"${runtime_json}")"
 redis_password="$(jq -er '.REDIS_PASSWORD' <<<"${runtime_json}")"
+smtp_enabled="$(jq -r '.SMTP_ENABLED // false' <<<"${runtime_json}")"
 master_username="$(jq -er '.username' <<<"${master_json}")"
 master_password="$(jq -er '.password' <<<"${master_json}")"
+
+if [[ "${smtp_enabled}" == true ]]; then
+  smtp_address="$(jq -er '.SMTP_ADDRESS' <<<"${runtime_json}")"
+  smtp_port="$(jq -er '.SMTP_PORT' <<<"${runtime_json}")"
+  smtp_domain="$(jq -er '.SMTP_DOMAIN' <<<"${runtime_json}")"
+  smtp_username="$(jq -er '.SMTP_USERNAME' <<<"${runtime_json}")"
+  smtp_password="$(jq -er '.SMTP_PASSWORD' <<<"${runtime_json}")"
+  smtp_authentication="$(jq -er '.SMTP_AUTHENTICATION' <<<"${runtime_json}")"
+  smtp_enable_starttls_auto="$(jq -er '.SMTP_ENABLE_STARTTLS_AUTO' <<<"${runtime_json}")"
+  smtp_openssl_verify_mode="$(jq -er '.SMTP_OPENSSL_VERIFY_MODE' <<<"${runtime_json}")"
+  mailer_sender_email="$(jq -er '.MAILER_SENDER_EMAIL' <<<"${runtime_json}")"
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   dnf install -y docker jq
@@ -91,33 +104,47 @@ docker run --rm \
   -c 'CREATE EXTENSION IF NOT EXISTS plpgsql'
 
 umask 077
-printf '%s\n' \
-  'RAILS_ENV=production' \
-  'NODE_ENV=production' \
-  'INSTALLATION_ENV=docker' \
-  'RAILS_LOG_TO_STDOUT=true' \
-  'RAILS_SERVE_STATIC_FILES=true' \
-  'ENABLE_ACCOUNT_SIGNUP=false' \
-  'FORCE_SSL=true' \
-  "FRONTEND_URL=https://${CHATWOOT_DOMAIN}" \
-  "SECRET_KEY_BASE=${secret_key_base}" \
-  "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=${active_record_primary_key}" \
-  "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=${active_record_deterministic_key}" \
-  "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=${active_record_salt}" \
-  "POSTGRES_HOST=${RDS_ENDPOINT}" \
-  "POSTGRES_PORT=${RDS_PORT}" \
-  "POSTGRES_DATABASE=${POSTGRES_DATABASE}" \
-  "POSTGRES_USERNAME=${POSTGRES_USERNAME}" \
-  "POSTGRES_PASSWORD=${postgres_password}" \
-  'PGSSLMODE=require' \
-  "REDIS_URL=redis://:${redis_password}@chatwoot-redis:6379" \
-  "REDIS_PASSWORD=${redis_password}" \
-  'ACTIVE_STORAGE_SERVICE=amazon' \
-  "AWS_REGION=${AWS_REGION}" \
-  "S3_BUCKET_NAME=${S3_BUCKET_NAME}" \
-  'RAILS_MAX_THREADS=5' \
-  'SIDEKIQ_CONCURRENCY=10' \
-  >/opt/chatwoot/.env
+{
+  printf '%s\n' \
+    'RAILS_ENV=production' \
+    'NODE_ENV=production' \
+    'INSTALLATION_ENV=docker' \
+    'RAILS_LOG_TO_STDOUT=true' \
+    'RAILS_SERVE_STATIC_FILES=true' \
+    'ENABLE_ACCOUNT_SIGNUP=false' \
+    'FORCE_SSL=true' \
+    "FRONTEND_URL=https://${CHATWOOT_DOMAIN}" \
+    "SECRET_KEY_BASE=${secret_key_base}" \
+    "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=${active_record_primary_key}" \
+    "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=${active_record_deterministic_key}" \
+    "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=${active_record_salt}" \
+    "POSTGRES_HOST=${RDS_ENDPOINT}" \
+    "POSTGRES_PORT=${RDS_PORT}" \
+    "POSTGRES_DATABASE=${POSTGRES_DATABASE}" \
+    "POSTGRES_USERNAME=${POSTGRES_USERNAME}" \
+    "POSTGRES_PASSWORD=${postgres_password}" \
+    'PGSSLMODE=require' \
+    "REDIS_URL=redis://:${redis_password}@chatwoot-redis:6379" \
+    "REDIS_PASSWORD=${redis_password}" \
+    'ACTIVE_STORAGE_SERVICE=amazon' \
+    "AWS_REGION=${AWS_REGION}" \
+    "S3_BUCKET_NAME=${S3_BUCKET_NAME}" \
+    'RAILS_MAX_THREADS=5' \
+    'SIDEKIQ_CONCURRENCY=10'
+
+  if [[ "${smtp_enabled}" == true ]]; then
+    printf '%s\n' \
+      "MAILER_SENDER_EMAIL=${mailer_sender_email}" \
+      "SMTP_ADDRESS=${smtp_address}" \
+      "SMTP_PORT=${smtp_port}" \
+      "SMTP_DOMAIN=${smtp_domain}" \
+      "SMTP_USERNAME=${smtp_username}" \
+      "SMTP_PASSWORD=${smtp_password}" \
+      "SMTP_AUTHENTICATION=${smtp_authentication}" \
+      "SMTP_ENABLE_STARTTLS_AUTO=${smtp_enable_starttls_auto}" \
+      "SMTP_OPENSSL_VERIFY_MODE=${smtp_openssl_verify_mode}"
+  fi
+} >/opt/chatwoot/.env
 chmod 600 /opt/chatwoot/.env
 
 docker network inspect chatwoot >/dev/null 2>&1 || docker network create chatwoot

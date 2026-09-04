@@ -37,6 +37,13 @@ The image is built by AWS CodeBuild, so Docker Desktop is not required on the
 deployment computer. Docker remains isolated to the private EC2 instance as the
 application runtime.
 
+The interactive command can also configure ZeptoMail for invitation, email
+verification, password reset, and notification emails. It stores the SMTP
+password in the existing AWS Secrets Manager runtime secret and reuses it on
+later deployments. Use the SMTP username and password shown under the
+ZeptoMail mail agent's `SMTP/API` page; the sender address must belong to a
+verified domain associated with that agent.
+
 After the first deployment, create the displayed CNAME in Cloudflare or let the
 script create it with a scoped Cloudflare API token. Use `Full (strict)` SSL/TLS
 mode. The existing ALB certificate must cover the Chatwoot hostname.

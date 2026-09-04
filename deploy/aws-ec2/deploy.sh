@@ -143,6 +143,50 @@ if [[ ! "${root_volume_size}" =~ ^[0-9]+$ || "${root_volume_size}" -lt 40 ]]; th
   exit 1
 fi
 
+RUNTIME_SECRET_NAME="/chatwoot/${environment}/runtime"
+runtime_secret_exists=false
+runtime_secret_json='{}'
+if aws secretsmanager describe-secret --secret-id "${RUNTIME_SECRET_NAME}" >/dev/null 2>&1; then
+  runtime_secret_exists=true
+  runtime_secret_json="$(aws secretsmanager get-secret-value --secret-id "${RUNTIME_SECRET_NAME}" --query SecretString --output text)"
+fi
+
+smtp_enabled=false
+smtp_default='n'
+if [[ "$(jq -r '.SMTP_ENABLED // false' <<<"${runtime_secret_json}")" == true ]]; then
+  smtp_default='y'
+fi
+
+if confirm '是否启用 ZeptoMail SMTP 邮件发送' "${smtp_default}"; then
+  smtp_enabled=true
+  smtp_domain_default="${domain_name}"
+  [[ "${domain_name}" == *.*.* ]] && smtp_domain_default="${domain_name#*.}"
+  smtp_domain="$(prompt 'ZeptoMail 已验证域名' "$(jq -r --arg fallback "${smtp_domain_default}" '.SMTP_DOMAIN // $fallback' <<<"${runtime_secret_json}")")"
+  mailer_sender_email="$(prompt '发件人' "$(jq -r --arg fallback "SpinBison Support <support@${smtp_domain}>" '.MAILER_SENDER_EMAIL // $fallback' <<<"${runtime_secret_json}")")"
+  smtp_username="$(prompt 'ZeptoMail SMTP 用户名' "$(jq -r '.SMTP_USERNAME // "emailapikey"' <<<"${runtime_secret_json}")")"
+  smtp_password="$(jq -r '.SMTP_PASSWORD // empty' <<<"${runtime_secret_json}")"
+
+  update_smtp_password=true
+  if [[ -n "${smtp_password}" ]] && ! confirm '是否更新已保存的 ZeptoMail SMTP 密码' 'n'; then
+    update_smtp_password=false
+  fi
+  if [[ "${update_smtp_password}" == true ]]; then
+    while true; do
+      read -r -s -p 'ZeptoMail SMTP 密码（输入不会显示）: ' smtp_password
+      echo
+      if [[ -n "${smtp_password}" ]]; then
+        break
+      fi
+      echo 'SMTP 密码不能为空。'
+    done
+  fi
+
+  if [[ -z "${smtp_domain}" || -z "${smtp_username}" || "${mailer_sender_email}" != *@* ]]; then
+    echo '错误：ZeptoMail 域名、发件人或 SMTP 用户名无效。' >&2
+    exit 1
+  fi
+fi
+
 bootstrap_admin=false
 bootstrap_default='n'
 if [[ "${stack_exists}" == false ]]; then
@@ -279,6 +323,11 @@ echo "  域名：https://${domain_name}"
 echo "  EC2：${instance_type} / ${root_volume_size} GB，私有子网"
 echo "  PostgreSQL：复用 ${rds_endpoint}，独立数据库 ${postgres_database}"
 echo "  入口：复用 ${source_prefix}-alb，不安装 Nginx"
+if [[ "${smtp_enabled}" == true ]]; then
+  echo "  邮件：ZeptoMail SMTP，发件人 ${mailer_sender_email}"
+else
+  echo '  邮件：未启用 SMTP'
+fi
 echo
 
 if ! confirm '确认开始创建或更新 AWS 资源' 'n'; then
@@ -286,10 +335,7 @@ if ! confirm '确认开始创建或更新 AWS 资源' 'n'; then
   exit 0
 fi
 
-RUNTIME_SECRET_NAME="/chatwoot/${environment}/runtime"
-if aws secretsmanager describe-secret --secret-id "${RUNTIME_SECRET_NAME}" >/dev/null 2>&1; then
-  runtime_secret_arn="$(aws secretsmanager describe-secret --secret-id "${RUNTIME_SECRET_NAME}" --query ARN --output text)"
-else
+if [[ "${runtime_secret_exists}" == false ]]; then
   runtime_secret_json="$(jq -n \
     --arg secret_key_base "$(openssl rand -hex 64)" \
     --arg primary_key "$(openssl rand -hex 32)" \
@@ -305,14 +351,45 @@ else
       POSTGRES_PASSWORD: $postgres_password,
       REDIS_PASSWORD: $redis_password
     }')"
+fi
+
+if [[ "${smtp_enabled}" == true ]]; then
+  runtime_secret_json="$(jq \
+    --arg smtp_domain "${smtp_domain}" \
+    --arg mailer_sender_email "${mailer_sender_email}" \
+    --arg smtp_username "${smtp_username}" \
+    --arg smtp_password "${smtp_password}" \
+    '. + {
+      SMTP_ENABLED: true,
+      SMTP_ADDRESS: "smtp.zeptomail.com",
+      SMTP_PORT: "587",
+      SMTP_DOMAIN: $smtp_domain,
+      SMTP_USERNAME: $smtp_username,
+      SMTP_PASSWORD: $smtp_password,
+      SMTP_AUTHENTICATION: "login",
+      SMTP_ENABLE_STARTTLS_AUTO: "true",
+      SMTP_OPENSSL_VERIFY_MODE: "peer",
+      MAILER_SENDER_EMAIL: $mailer_sender_email
+    }' <<<"${runtime_secret_json}")"
+else
+  runtime_secret_json="$(jq '.SMTP_ENABLED = false' <<<"${runtime_secret_json}")"
+fi
+
+if [[ "${runtime_secret_exists}" == true ]]; then
+  runtime_secret_arn="$(aws secretsmanager put-secret-value \
+    --secret-id "${RUNTIME_SECRET_NAME}" \
+    --secret-string file:///dev/stdin \
+    --query ARN \
+    --output text <<<"${runtime_secret_json}")"
+else
   runtime_secret_arn="$(aws secretsmanager create-secret \
     --name "${RUNTIME_SECRET_NAME}" \
     --description "Chatwoot ${environment} runtime secrets" \
     --secret-string file:///dev/stdin \
     --query ARN \
     --output text <<<"${runtime_secret_json}")"
-  unset runtime_secret_json
 fi
+unset runtime_secret_json smtp_password
 
 if [[ "${bootstrap_admin}" == true ]]; then
   BOOTSTRAP_SECRET_NAME="/chatwoot/${environment}/bootstrap-$(date +%s)"

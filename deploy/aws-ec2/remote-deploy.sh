@@ -84,8 +84,11 @@ docker run --rm \
   postgres:18-alpine \
   psql "host=${RDS_ENDPOINT} port=${RDS_PORT} dbname=${POSTGRES_DATABASE} user=${master_username} sslmode=require" \
   -v ON_ERROR_STOP=1 \
+  -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements' \
   -c 'CREATE EXTENSION IF NOT EXISTS vector' \
-  -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm'
+  -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm' \
+  -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto' \
+  -c 'CREATE EXTENSION IF NOT EXISTS plpgsql'
 
 umask 077
 printf '%s\n' \
@@ -107,7 +110,7 @@ printf '%s\n' \
   "POSTGRES_USERNAME=${POSTGRES_USERNAME}" \
   "POSTGRES_PASSWORD=${postgres_password}" \
   'PGSSLMODE=require' \
-  "REDIS_URL=redis://:${redis_password}@redis:6379" \
+  "REDIS_URL=redis://:${redis_password}@chatwoot-redis:6379" \
   "REDIS_PASSWORD=${redis_password}" \
   'ACTIVE_STORAGE_SERVICE=amazon' \
   "AWS_REGION=${AWS_REGION}" \
@@ -132,6 +135,21 @@ docker run -d \
   redis:7-alpine \
   sh -c 'exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"' \
   >/dev/null
+
+redis_ready=false
+for attempt in {1..30}; do
+  if docker exec chatwoot-redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping' 2>/dev/null | grep -qx PONG; then
+    redis_ready=true
+    break
+  fi
+  sleep 1
+done
+
+if [[ "${redis_ready}" != true ]]; then
+  echo 'Redis failed its startup health check.' >&2
+  docker logs --tail 100 chatwoot-redis >&2 || true
+  exit 1
+fi
 
 registry="${IMAGE_URI%%/*}"
 aws ecr get-login-password | docker login --username AWS --password-stdin "${registry}" >/dev/null

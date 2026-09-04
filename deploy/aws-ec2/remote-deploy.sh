@@ -48,6 +48,9 @@ redis_password="$(jq -er '.REDIS_PASSWORD' <<<"${runtime_json}")"
 master_username="$(jq -er '.username' <<<"${master_json}")"
 master_password="$(jq -er '.password' <<<"${master_json}")"
 
+if ! command -v docker >/dev/null 2>&1; then
+  dnf install -y docker jq
+fi
 systemctl enable --now docker
 
 database_exists="$({

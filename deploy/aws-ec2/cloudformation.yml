@@ -308,7 +308,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -euo pipefail
-          dnf install -y docker jq curl
+          dnf install -y docker jq
           systemctl enable --now docker
           systemctl enable --now amazon-ssm-agent
           usermod -aG docker ec2-user

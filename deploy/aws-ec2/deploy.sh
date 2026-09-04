@@ -145,7 +145,19 @@ fi
 
 bootstrap_admin=false
 bootstrap_default='n'
-[[ "${stack_exists}" == false ]] && bootstrap_default='y'
+if [[ "${stack_exists}" == false ]]; then
+  bootstrap_default='y'
+else
+  existing_target_group_arn="$(aws cloudformation describe-stacks \
+    --stack-name "${STACK_NAME}" \
+    --query "Stacks[0].Outputs[?OutputKey=='TargetGroupArn'].OutputValue | [0]" \
+    --output text)"
+  healthy_target_count="$(aws elbv2 describe-target-health \
+    --target-group-arn "${existing_target_group_arn}" \
+    --query "length(TargetHealthDescriptions[?TargetHealth.State=='healthy'])" \
+    --output text 2>/dev/null || printf '0')"
+  [[ "${healthy_target_count}" == '0' ]] && bootstrap_default='y'
+fi
 if confirm '是否创建或重置初始超级管理员' "${bootstrap_default}"; then
   bootstrap_admin=true
   account_name="$(prompt '初始账户名称' 'HYHT Support')"

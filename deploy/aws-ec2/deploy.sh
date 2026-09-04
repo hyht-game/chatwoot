@@ -368,43 +368,76 @@ ecr_repository_uri="$(stack_output EcrRepositoryUri)"
 codebuild_project_name="$(stack_output CodeBuildProjectName)"
 uploads_bucket="$(stack_output UploadsBucketName)"
 log_group_name="$(stack_output LogGroupName)"
-image_tag="$(git rev-parse --short=12 HEAD)"
+requested_image_tag="$(git rev-parse --short=12 HEAD)"
+image_tag="${requested_image_tag}"
 image_uri="${ecr_repository_uri}:${image_tag}"
+repository_name="${ecr_repository_uri#*/}"
+build_required=true
 
-SOURCE_ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/chatwoot-source.XXXXXX")"
-git archive --format=zip --output="${SOURCE_ARCHIVE}" HEAD
-aws s3 cp "${SOURCE_ARCHIVE}" "s3://${uploads_bucket}/deploy/source.zip" --sse AES256 >/dev/null
-rm -f -- "${SOURCE_ARCHIVE}"
-SOURCE_ARCHIVE=''
-
-echo "正在通过 AWS CodeBuild 构建并推送镜像 ${image_uri}..."
-build_id="$(aws codebuild start-build \
-  --project-name "${codebuild_project_name}" \
-  --environment-variables-override "name=IMAGE_TAG,value=${image_tag},type=PLAINTEXT" \
-  --query 'build.id' \
-  --output text)"
-
-for attempt in {1..180}; do
-  build_status="$(aws codebuild batch-get-builds \
-    --ids "${build_id}" \
-    --query 'builds[0].buildStatus' \
-    --output text)"
-  case "${build_status}" in
-    SUCCEEDED)
+if aws ecr describe-images \
+  --repository-name "${repository_name}" \
+  --image-ids "imageTag=${requested_image_tag}" \
+  >/dev/null 2>&1; then
+  build_required=false
+else
+  latest_image_tags="$(aws ecr describe-images \
+    --repository-name "${repository_name}" \
+    --image-ids imageTag=latest \
+    --query 'imageDetails[0].imageTags' \
+    --output text 2>/dev/null || true)"
+  for candidate_tag in ${latest_image_tags}; do
+    if [[ "${candidate_tag}" =~ ^[0-9a-f]{12}$ ]] && git rev-parse --verify "${candidate_tag}^{commit}" >/dev/null 2>&1 && \
+      git diff --quiet "${candidate_tag}" HEAD -- . ':(exclude)deploy/aws-ec2/**' ':(exclude)bin/deploy-aws'; then
+      image_tag="${candidate_tag}"
+      image_uri="${ecr_repository_uri}:${image_tag}"
+      build_required=false
+      echo "应用代码没有变化，复用现有镜像 ${image_uri}。"
       break
-      ;;
-    FAILED|FAULT|STOPPED|TIMED_OUT)
-      aws codebuild batch-get-builds \
-        --ids "${build_id}" \
-        --query 'builds[0].{Status:buildStatus,CurrentPhase:currentPhase,Phases:phases[*].{Phase:phaseType,Status:phaseStatus,Message:contexts[0].message},Logs:logs.deepLink}'
-      exit 1
-      ;;
-  esac
-  sleep 10
-done
-if [[ "${build_status:-}" != 'SUCCEEDED' ]]; then
-  echo '错误：CodeBuild 镜像构建在 30 分钟内没有完成。' >&2
-  exit 1
+    fi
+  done
+fi
+
+if [[ "${build_required}" == true ]]; then
+  SOURCE_ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/chatwoot-source.XXXXXX")"
+  git archive --format=zip --output="${SOURCE_ARCHIVE}" HEAD
+  aws s3 cp "${SOURCE_ARCHIVE}" "s3://${uploads_bucket}/deploy/source.zip" --sse AES256 >/dev/null
+  rm -f -- "${SOURCE_ARCHIVE}"
+  SOURCE_ARCHIVE=''
+
+  echo "正在通过 AWS CodeBuild 构建并推送镜像 ${image_uri}..."
+  build_id="$(aws codebuild start-build \
+    --project-name "${codebuild_project_name}" \
+    --environment-variables-override "name=IMAGE_TAG,value=${image_tag},type=PLAINTEXT" \
+    --query 'build.id' \
+    --output text)"
+
+  last_build_phase=''
+  for attempt in {1..180}; do
+    read -r build_status build_phase <<<"$(aws codebuild batch-get-builds \
+      --ids "${build_id}" \
+      --query 'builds[0].[buildStatus,currentPhase]' \
+      --output text)"
+    if [[ "${build_phase}" != "${last_build_phase}" || $((attempt % 6)) -eq 0 ]]; then
+      echo "  CodeBuild：${build_status} / ${build_phase}（镜像首次构建通常需要 10–20 分钟）"
+      last_build_phase="${build_phase}"
+    fi
+    case "${build_status}" in
+      SUCCEEDED)
+        break
+        ;;
+      FAILED|FAULT|STOPPED|TIMED_OUT)
+        aws codebuild batch-get-builds \
+          --ids "${build_id}" \
+          --query 'builds[0].{Status:buildStatus,CurrentPhase:currentPhase,Phases:phases[*].{Phase:phaseType,Status:phaseStatus,Message:contexts[0].message},Logs:logs.deepLink}'
+        exit 1
+        ;;
+    esac
+    sleep 10
+  done
+  if [[ "${build_status:-}" != 'SUCCEEDED' ]]; then
+    echo '错误：CodeBuild 镜像构建在 30 分钟内没有完成。' >&2
+    exit 1
+  fi
 fi
 
 echo '正在等待 EC2 进入 SSM 在线状态...'
@@ -439,12 +472,17 @@ command_id="$(aws ssm send-command \
   --query Command.CommandId \
   --output text)"
 
+last_command_status=''
 for attempt in {1..180}; do
   command_status="$(aws ssm get-command-invocation \
     --command-id "${command_id}" \
     --instance-id "${instance_id}" \
     --query Status \
     --output text 2>/dev/null || true)"
+  if [[ -n "${command_status}" && ("${command_status}" != "${last_command_status}" || $((attempt % 6)) -eq 0) ]]; then
+    echo "  EC2 部署：${command_status}（正在准备数据库或容器）"
+    last_command_status="${command_status}"
+  fi
   case "${command_status}" in
     Success)
       break

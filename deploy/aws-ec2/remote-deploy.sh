@@ -74,6 +74,7 @@ docker run --rm --interactive \
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_password')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'app_user') \gexec
 SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'app_user', :'app_password') \gexec
+SELECT format('GRANT %I TO %I', :'app_user', current_user) \gexec
 SELECT format('CREATE DATABASE %I OWNER %I', :'app_database', :'app_user')
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'app_database') \gexec
 SQL

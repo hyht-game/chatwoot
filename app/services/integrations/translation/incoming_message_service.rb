@@ -5,6 +5,7 @@ class Integrations::Translation::IncomingMessageService
     return unless valid_message?
 
     source_language = resolved_source_language
+    return if source_language.blank?
     persist_conversation_language(source_language)
     return if same_language?(source_language, target_language)
 
@@ -18,7 +19,10 @@ class Integrations::Translation::IncomingMessageService
   end
 
   def resolved_source_language
-    message.conversation.language.presence || client.detect_language(content: message.content.first(1500))
+    language = message.conversation.language.to_s.tr('_', '-')
+    return language if Integrations::Translation::OpenaiCompatibleClient.valid_language?(language)
+
+    client.detect_language(content: message.content.first(1500))
   end
 
   def translated_messages
@@ -27,7 +31,7 @@ class Integrations::Translation::IncomingMessageService
   end
 
   def persist_conversation_language(language)
-    return if message.conversation.language.present?
+    return if message.conversation.language == language
 
     attributes = message.conversation.additional_attributes.merge('conversation_language' => language)
     message.conversation.update!(additional_attributes: attributes)

@@ -45,7 +45,9 @@ class Messages::OutgoingTranslationService
   end
 
   def known_target_language
-    @known_target_language ||= conversation.language.presence || conversation.additional_attributes['browser_language'].presence
+    @known_target_language ||= [conversation.language, conversation.additional_attributes['browser_language']]
+                               .map { |language| language.to_s.tr('_', '-') }
+                               .find { |language| Integrations::Translation::OpenaiCompatibleClient.valid_language?(language) }
   end
 
   def detect_target_language
@@ -53,6 +55,9 @@ class Messages::OutgoingTranslationService
     raise CustomExceptions::TranslationProviderError, I18n.t('errors.translation.target_language_missing') if content.blank?
 
     detected_language = client.detect_language(content: content.first(1500))
+    if detected_language.blank?
+      raise CustomExceptions::TranslationProviderError, I18n.t('errors.translation.target_language_missing')
+    end
     conversation.update!(additional_attributes: conversation.additional_attributes.merge('conversation_language' => detected_language))
     detected_language
   end

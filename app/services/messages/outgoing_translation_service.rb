@@ -1,4 +1,6 @@
 class Messages::OutgoingTranslationService
+  DEFAULT_TARGET_LANGUAGE = 'en'.freeze
+
   pattr_initialize [:conversation!, :user!, :params!]
 
   def perform
@@ -41,7 +43,7 @@ class Messages::OutgoingTranslationService
   def resolved_target_language
     return normalize_language(known_target_language) if known_target_language.present?
 
-    detect_target_language
+    detect_target_language || DEFAULT_TARGET_LANGUAGE
   end
 
   def known_target_language
@@ -52,12 +54,11 @@ class Messages::OutgoingTranslationService
 
   def detect_target_language
     content = latest_incoming_content
-    raise CustomExceptions::TranslationProviderError, I18n.t('errors.translation.target_language_missing') if content.blank?
+    return if content.blank?
 
     detected_language = client.detect_language(content: content.first(1500))
-    if detected_language.blank?
-      raise CustomExceptions::TranslationProviderError, I18n.t('errors.translation.target_language_missing')
-    end
+    return if detected_language.blank?
+
     conversation.update!(additional_attributes: conversation.additional_attributes.merge('conversation_language' => detected_language))
     detected_language
   end

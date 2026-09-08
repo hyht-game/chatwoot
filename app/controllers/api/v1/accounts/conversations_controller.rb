@@ -38,10 +38,11 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   def show; end
 
   def create
-    ActiveRecord::Base.transaction do
-      @conversation = ConversationBuilder.new(params: params, contact_inbox: @contact_inbox).perform
-      Messages::MessageBuilder.new(Current.user, @conversation, params[:message]).perform if params[:message].present?
+    @conversation = Conversations::ContactReplyService.new(contact_inbox: @contact_inbox, user: Current.user, params: params).perform do |existing|
+      authorize existing, :show?
     end
+  rescue CustomExceptions::TranslationProviderError => e
+    render_could_not_create_error(e.message)
   end
 
   def update
